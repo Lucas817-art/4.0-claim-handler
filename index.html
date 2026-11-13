@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中国信保 - 索赔操作与出运明细生成器</title>
+    <style>
+        :root {
+            --primary: #0b57a3;
+            --danger: #d32f2f;
+            --success: #2e7d32;
+            --warning: #ed6c02;
+            --bg-gray: #f8f9fa;
+            --border: #dee2e6;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1250px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #fff;
+        }
+        h1, h2, h3 { color: var(--primary); }
+        .header { text-align: center; border-bottom: 3px solid var(--primary); padding-bottom: 10px; margin-bottom: 30px; }
+        .time-line { display: flex; justify-content: space-between; background: var(--bg-gray); padding: 15px; border-radius: 8px; margin-bottom: 30px; font-weight: bold; text-align: center; }
+        .time-line .step { flex: 1; }
+        .time-line .step span { display: block; font-size: 0.85em; color: var(--danger); font-weight: normal; }
+        .section-box { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 25px; overflow: hidden; }
+        .section-title { background-color: var(--primary); color: white; padding: 12px 20px; font-size: 1.1em; font-weight: bold; }
+        .section-content { padding: 20px; }
+        
+        /* 交互式 Checkbox 样式 */
+        .checklist { list-style: none; padding: 0; margin: 0; }
+        .checklist li { margin-bottom: 12px; }
+        .checklist label { display: flex; align-items: flex-start; cursor: pointer; font-weight: 500; }
+        .checklist input[type="checkbox"] { margin-top: 5px; margin-right: 10px; width: 18px; height: 18px; cursor: pointer; }
+        .checklist input[type="checkbox"]:checked + span { text-decoration: line-through; color: #888; }
+        
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold; color: white; margin-left: 8px; }
+        .badge-must { background-color: var(--danger); }
+        .badge-time { background-color: var(--warning); }
+        .badge-conditional { background-color: var(--success); }
+        
+        .file-map { background-color: #e3f2fd; border-left: 5px solid var(--primary); padding: 15px; margin-top: 20px; }
+        .file-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .file-item { background: white; padding: 10px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 0.9em; }
+        .alert-box { background-color: #ffebee; border-left: 5px solid var(--danger); padding: 15px; margin-bottom: 25px; }
+        .alert-box h4 { margin-top: 0; color: var(--danger); }
+
+        /* 生成器样式 */
+        .gen-header-info { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 15px; background: #f8f9fa; padding: 10px; border-radius: 4px; }
+        .gen-header-info label { font-weight: bold; margin-right: 5px; font-size: 0.9em; }
+        .gen-header-info input[type="text"] { padding: 4px; border: 1px solid #ccc; border-radius: 4px; }
+        
+        .data-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.85em; }
+        .data-table th, .data-table td { border: 1px solid var(--border); padding: 6px; text-align: center; vertical-align: middle; }
+        .data-table th { background-color: #e9ecef; }
+        .data-table input[type="text"], .data-table input[type="number"], .data-table input[type="date"], .data-table select, .data-table textarea { width: 100%; box-sizing: border-box; padding: 4px; border: 1px solid #ccc; border-radius: 4px; text-align: center; font-size: 0.95em; font-family: inherit;}
+        .data-table textarea { text-align: left; resize: vertical; min-height: 60px; }
+        .data-table input[type="number"]::-webkit-outer-spin-button, .data-table input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        
+        .sys-readonly { background-color: #f1f3f5; color: #999; cursor: not-allowed; font-style: italic; }
+        
+        .btn { background-color: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 1em; margin-right: 10px; }
+        .btn:hover { opacity: 0.9; }
+        .btn-danger { background-color: var(--danger); }
+        .btn-success { background-color: var(--success); }
+        
+        .warning-text { color: var(--danger); font-size: 0.85em; font-weight: bold; margin-bottom: 5px; display: block; }
+        
+        @media (max-width: 768px) {
+            .time-line { flex-direction: column; gap: 10px; }
+            .file-grid { grid-template-columns: 1fr; }
+            .data-table { display: block; overflow-x: auto; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>出口信用综合险索赔操作 Checklist</h1>
+        <p>投保《短期出口信用保险综合保险条款(4.0版)》客户适用</p>
+    </div>
+
+    <!-- 流程图 -->
+    <div class="time-line">
+        <div class="step">1. 风险发生<br><span>拖欠30天/其他风险10个工作日</span></div>
+        <div class="step">➔</div>
+        <div class="step">2. 通报可损<br><span>信保通或线下提交</span></div>
+        <div class="step">➔</div>
+        <div class="step">3. 申请索赔<br><span>提交可损后4个月内</span></div>
+        <div class="step">➔</div>
+        <div class="step">4. 定损核赔<br><span>受理后4个月内通知</span></div>
+    </div>
+
+    <!-- 提示区 -->
+    <div class="alert-box">
+        <h4>⚠️ 请避免以下情况（直接影响赔付或拒赔）：</h4>
+        <ul>
+            <li>未及时、足额缴纳保险费</li>
+            <li>超过信用限额向买方出运/交付货物</li>
+            <li>知道风险已发生仍继续出运</li>
+            <li>未在时限内报损或索赔（超期6个月以上可能拒赔）</li>
+            <li>未积极履行减损义务（如未及时处理拒收货物）</li>
+        </ul>
+    </div>
+
+    <!-- 第一阶段：可损通知 -->
+    <div class="section-box">
+        <div class="section-title">第一阶段：通报可能损失 <span class="badge badge-time">核心时限</span></div>
+        <div class="section-content">
+            <p><strong>时间要求：</strong>拖欠风险发生30天内；买方拒收/破产/政治风险发生10个工作日内。</p>
+            <ul class="checklist">
+                <li><label><input type="checkbox"><span><strong>《可能损失通知书》</strong> <span class="badge badge-must">必备</span>：需签字并加盖公章（可通过信保通线上提交）。</span></label></li>
+                <li><label><input type="checkbox"><span><strong>委托追偿授权类文件</strong> <span class="badge badge-must">必备</span>（如需委托信保追讨）：《委托代理协议》（2份）、《Collection Trust Deed》（1份）、《委托事项明细表》（1份）。</span></label></li>
+                <li><label><input type="checkbox"><span><strong>贸易类文件</strong> <span class="badge badge-must">必备</span>：合同、商业发票、海运提单/交付凭证、出口报关证明文件等。</span></label></li>
+            </ul>
+            <p><em>💡 注意：如希望自行追偿，需在报损时限届满前提交书面延期报损申请。需与买方达成分期、债务和解、货物处理、诉讼等方案时，须事先取得信保书面同意。</em></p>
+        </div>
+    </div>
+
+    <!-- 第二阶段：索赔申请 -->
+    <div class="section-box">
+        <div class="section-title">第二阶段：正式申请索赔 <span class="badge badge-time">核心时限</span></div>
+        <div class="section-content">
+            <p><strong>时间要求：</strong>一般在提交《可能损失通知书》后4个月内提出。</p>
+            <ul class="checklist">
+                <li><label><input type="checkbox"><span><strong>《索赔申请书》</strong> <span class="badge badge-must">必备</span>：完整准确填写，签字加盖公章。</span></label></li>
+                <li><label><input type="checkbox"><span><strong>《索赔单证明细表》</strong> <span class="badge badge-must">必备</span>：勾选并确认所提交的索赔文件。</span></label></li>
+                <li><label><input type="checkbox"><span><strong>全套贸易单证</strong> <span class="badge badge-must">必备</span>：按发票号索引，顺序整理（合同-发票-运输单据-报关单）。</span></label></li>
+                <li><label><input type="checkbox"><span><strong>损因证明文件</strong> <span class="badge badge-conditional">如有</span>：如买方拒收证明、破产证明、信用证拒付电文、政治风险证明等。</span></label></li>
+                <li><label><input type="checkbox"><span><strong>非OA支付方式文件</strong> <span class="badge badge-conditional">如有</span>：L/C承兑电文、D/P托收委托书、D/A承兑电文等。</span></label></li>
+                <li><label><input type="checkbox"><span><strong>反洗钱材料</strong> <span class="badge badge-must">必备</span>：客户基本身份信息登记表、营业执照、控股股东/实际控制人及受益所有人证件、股权结构说明等（均需加盖公章）。</span></label></li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 贸易单证自查指南 -->
+    <div class="section-box">
+        <div class="section-title">📂 贸易单证一致性自查指南（信保审核重点）</div>
+        <div class="section-content">
+            <p>提交的贸易单证需形成完整的证据链（合同 ➔ 发票 ➔ 提单 ➔ 报关单），如遇以下情况，请务必补充证明文件：</p>
+            <ul class="checklist">
+                <li><label><input type="checkbox"><span><strong>合同主体不一致：</strong>合同买方与限额买方不一致，需补充限额买方承担付款义务的证明文件；合同卖方与被保险人/代理不一致，需注明或提供说明。</span></label></li>
+                <li><label><input type="checkbox"><span><strong>支付方式不一致：</strong>合同约定的支付方式与实际支付不一致时，需补充说明及证明文件。</span></label></li>
+                <li><label><input type="checkbox"><span><strong>发票信息不一致：</strong>商业发票显示的商品信息（品名、单价、数量）与合同不符时，需补充对应的合约依据（如补充合同、往来邮件）。</span></label></li>
+                <li><label><input type="checkbox"><span><strong>运输单据不一致：</strong>提单发货人与被保险人不同，需提供买方书面确认；收货人与限额买方不同，需提供买方书面指示；送货数量与发票不符需说明。</span></label></li>
+                <li><label><input type="checkbox"><span><strong>报关单不一致：</strong>报关企业与被保险人不同，或运抵国、集装箱号、发货时间等与提单显示不一致时，需提供说明。</span></label></li>
+                <li><label><input type="checkbox"><span><strong>金额存在差异：</strong>贸易单据总金额与报损金额不一致，需说明差异原因并提供计算依据（如预付款/部分还款水单、折扣说明等）。</span></label></li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 第三阶段：领取赔款 -->
+    <div class="section-box">
+        <div class="section-title">第三阶段：领取赔款及权益转让</div>
+        <div class="section-content">
+            <ul class="checklist">
+                <li><label><input type="checkbox"><span><strong>《赔付通知书/回执》</strong>（1份正本）：确认接受赔付决定及收款账户信息。</span></label></li>
+                <li><label><input type="checkbox"><span><strong>《赔款收据及权益转让书》</strong>（1份正本）：中英文版，确认收到赔款并转让权益。</span></label></li>
+                <li><label><input type="checkbox"><span><strong>《Export Credit Insurance Payment Receipt and Subrogation Form》</strong>（1份正本）。</span></label></li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 出运明细自助生成与导出 (按照图片原版复刻) -->
+    <div class="section-box" style="border: 2px solid var(--success);">
+        <div class="section-title" style="background-color: var(--success);">📊 出运明细一键生成器 (标准模板导出)</div>
+        <div class="section-content">
+            
+            <!-- 顶部基本信息 -->
+            <div class="gen-header-info">
+                <div><label>被保险人名称：</label><input type="text" id="gen_insured" placeholder="请填写公司名称" style="width: 200px;"></div>
+                <div><label>立案号：</label><input type="text" id="gen_caseNo" placeholder="如 EC2021XXXX" style="width: 150px;"></div>
+                <div><label>金额单位：</label><input type="text" id="gen_currency" value="USD" style="width: 60px;"></div>
+                <div>
+                    <label>签约主体：</label>
+                    <input type="radio" name="gen_subject" value="被保险人" checked> 被保险人
+                    <input type="radio" name="gen_subject" value="代理公司"> 代理公司
+                    <input type="radio" name="gen_subject" value="境外关联公司"> 境外关联公司
+                </div>
+            </div>
+
+            <!-- 明细表格 -->
+            <p style="font-size: 0.85em; color: #666; margin-bottom: 5px;">* 灰色字段为系统导出项，无需手动填写。其余蓝色字体相关字段请手动填写，勾选“是否提供”即代表已提交。</p>
+            <div style="overflow-x: auto;">
+                <table class="data-table" id="exportTable">
+                    <thead>
+                        <tr>
+                            <th colspan="5">发票</th>
+                            <th colspan="2">合同</th>
+                            <th colspan="2">提单（其他货运单据）</th>
+                            <th colspan="2">报关单号</th>
+                            <th rowspan="2" style="vertical-align: middle;">实际出运<br>日期</th>
+                            <th rowspan="2" style="vertical-align: middle;">实际支付<br>条件</th>
+                            <th rowspan="2" style="vertical-align: middle;">应付款日</th>
+                            <th rowspan="2" style="vertical-align: middle;">报损金额</th>
+                            <th rowspan="2" style="vertical-align: middle;">索赔金额</th>
+                            <th rowspan="2" style="vertical-align: middle;">备注</th>
+                            <th rowspan="2" style="vertical-align: middle;">操作</th>
+                        </tr>
+                        <tr>
+                            <th class="sys-readonly">申报发票号</th>
+                            <th class="sys-readonly">申报发票金额</th>
+                            <th>发票号</th>
+                            <th>发票金额</th>
+                            <th>是否提供</th>
+                            <th>合同号</th>
+                            <th>是否提供</th>
+                            <th>提单号</th>
+                            <th>是否提供</th>
+                            <th>报关单号</th>
+                            <th>是否提供</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <!-- JS 渲染 -->
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="3" style="text-align: right; font-weight: bold;">总计：</td>
+                            <td id="totalInvAmt" style="font-weight: bold; color: var(--primary);">0.00</td>
+                            <td colspan="7"></td>
+                            <td colspan="2"></td>
+                            <td id="totalLossAmt" style="font-weight: bold; color: var(--primary);">0.00</td>
+                            <td id="totalClaimAmt" style="font-weight: bold; color: var(--primary);">0.00</td>
+                            <td></td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            
+            <div style="margin-top: 15px; text-align: right;">
+                <button class="btn" onclick="addDetailRow()">+ 添加出运明细</button>
+            </div>
+
+            <hr style="border-top: 1px dashed #ccc; margin: 30px 0;">
+
+            <!-- 收汇记录表格 -->
+            <h3 style="font-size: 1em; margin-bottom: 10px; color: var(--primary);">收汇记录</h3>
+            <span class="warning-text">⚠️ 提醒：请业务人员务必提供银行收汇水单。如非全额偿还本案欠款，请务必在备注栏中详细说明分摊情况（参考默认提示语）。</span>
+            <div style="overflow-x: auto;">
+                <table class="data-table" id="receiptTable" style="width: 70%;">
+                    <thead>
+                        <tr>
+                            <th style="width: 15%;">收汇日期</th>
+                            <th style="width: 15%;">收汇金额</th>
+                            <th style="width: 15%;">有无提供银行水单</th>
+                            <th style="width: 45%;">备注</th>
+                            <th style="width: 10%;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="receiptBody">
+                        <!-- JS 渲染 -->
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td style="text-align: right; font-weight: bold;">总计：</td>
+                            <td id="totalReceiptAmt" style="font-weight: bold; color: var(--primary);">0.00</td>
+                            <td colspan="3"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
+            <div style="margin-top: 15px; text-align: right; display: flex; justify-content: flex-end; align-items: center; gap: 15px;">
+                <button class="btn" style="background-color: #555;" onclick="addReceiptRow()">+ 添加收汇记录</button>
+                <button class="btn btn-success" onclick="exportToExcel()" style="font-size: 1.1em; padding: 12px 25px;">📥 导出标准 Excel 表格</button>
+            </div>
+            
+        </div>
+    </div>
+
+    <!-- 资料模板去哪找 -->
+    <div class="file-map">
+        <h3>📁 资料模板去哪找？（请对照压缩包）</h3>
+        <p>为了确保您提交的材料规范，请直接从压缩包中查找并下载对应模板：</p>
+        <div class="file-grid">
+            <div class="file-item">
+                <strong>1. 报损阶段模板</strong><br>
+                📄 <code>附件1：可能损失通知书.doc</code><br>
+                📄 <code>附件2：可损通知书填写指南.pdf</code>
+            </div>
+            <div class="file-item">
+                <strong>2. 索赔申请模板</strong><br>
+                📄 <code>附件10：索赔申请书.doc</code><br>
+                📄 <code>附件11：索赔申请书填写指南.pdf</code><br>
+                📄 <code>附件12：索赔单证明细表.doc</code><br>
+                📄 <code>附件13：索赔单证明细表填写指南.pdf</code>
+            </div>
+            <div class="file-item">
+                <strong>3. 委托追偿授权模板</strong><br>
+                📄 <code>1. 出口险委托代理协议(2021年修改版）.doc</code><br>
+                📄 <code>2. 委托事项明细表.doc</code><br>
+                📄 <code>3. Collection Trust Deed.doc</code><br>
+                📄 <code>委托代理文件填写指南.pdf</code>
+            </div>
+            <div class="file-item">
+                <strong>4. 贸易单证及出运明细</strong><br>
+                📄 <code>附件9：贸易文件清单.pdf</code>（核对自查用）<br>
+                📄 <code>出运明细一览表.xls</code>（可直接使用上方生成器替代）
+            </div>
+            <div class="file-item">
+                <strong>5. 反洗钱材料</strong><br>
+                📄 <code>反洗钱材料 - 客户信息登记表.doc</code><br>
+                📄 <code>反洗钱材料准备指南.docx</code>
+            </div>
+            <div class="file-item">
+                <strong>6. 其他（撤销/理赔）</strong><br>
+                📄 撤销可损/索赔通知书（见综合索赔指南附件）<br>
+                📄 《货物处理方案》及填写指南（见综合索赔指南）
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript 逻辑 -->
+    <script>
+        // 备注栏默认提示语
+        const defaultRemarkText = "如果该笔收汇非全部用于偿还本案项下欠款，请备注：我公司于202X年X月XX日收汇XX金额，其中A金额用于涉案还款，B金额用于XYZ发票号还款。同时需要提供XYZ发票相关全套贸易单证，包括合同/PI、发票、提单、报关单、全部收汇水单等。";
+
+        document.addEventListener("DOMContentLoaded", function() {
+            addDetailRow();
+            addReceiptRow();
+        });
+
+        // 添加出运明细行
+        function addDetailRow() {
+            const tbody = document.getElementById('tableBody');
+            const newRow = document.createElement('tr');
+            newRow.innerHTML = `
+                <td class="sys-readonly" title="系统导出项，无需填写"></td>
+                <td class="sys-readonly" title="系统导出项，无需填写"></td>
+                <td><input type="text" class="inv-no"></td>
+                <td><input type="number" class="inv-amt" placeholder="0.00" oninput="calcTotal()"></td>
+                <td><input type="checkbox" class="has-inv"></td>
+                <td><input type="text" class="contract-no"></td>
+                <td><input type="checkbox" class="has-contract"></td>
+                <td><input type="text" class="bl-no"></td>
+                <td><input type="checkbox" class="has-bl"></td>
+                <td><input type="text" class="customs-no"></td>
+                <td><input type="checkbox" class="has-customs"></td>
+                <td><input type="date" class="ship-date" onchange="autoCalcDueDate(this)"></td>
+                <td style="display:flex; gap:2px;">
+                    <select class="pay-method" onchange="autoCalcDueDate(this)" style="width:45%; padding:2px;">
+                        <option value="OA">OA</option>
+                        <option value="DA">D/A</option>
+                        <option value="DP">D/P</option>
+                        <option value="LC">L/C</option>
+                    </select>
+                    <input type="number" class="pay-term" list="term-list" placeholder="天" onchange="autoCalcDueDate(this)" style="width:50%; padding:2px;">
+                </td>
+                <td><input type="date" class="due-date"></td>
+                <td><input type="number" class="loss-amt" placeholder="0.00" oninput="calcTotal()"></td>
+                <td><input type="number" class="claim-amt" placeholder="0.00" oninput="calcTotal()"></td>
+                <td><input type="text" class="remark"></td>
+                <td><button class="btn btn-danger" style="padding:4px 8px; font-size:0.8em; margin:0;" onclick="deleteRow(this, 'detail')">删除</button></td>
+            `;
+            tbody.appendChild(newRow);
+        }
+
+        // 添加收汇记录行
+        function addReceiptRow() {
+            const tbody = document.getElementById('receiptBody');
+            const newRow = document.createElement('tr');
+            newRow.innerHTML = `
+                <td><input type="date" class="rec-date"></td>
+                <td><input type="number" class="rec-amt" placeholder="0.00" oninput="calcTotal()"></td>
+                <td>
+                    <select class="rec-slip">
+                        <option value="" selected disabled>-- 请确认 --</option>
+                        <option value="是">是（已提供）</option>
+                        <option value="否">否（需说明）</option>
+                    </select>
+                </td>
+                <td>
+                    <textarea class="rec-remark" placeholder="请填写收汇备注...">${defaultRemarkText}</textarea>
+                </td>
+                <td><button class="btn btn-danger" style="padding:4px 8px; font-size:0.8em; margin:0;" onclick="deleteRow(this, 'receipt')">删除</button></td>
+            `;
+            tbody.appendChild(newRow);
+        }
+
+        // 删除行
+        function deleteRow(btn, type) {
+            const row = btn.parentNode.parentNode;
+            row.parentNode.removeChild(row);
+            calcTotal();
+        }
+
+        // 自动计算应付款日
+        function autoCalcDueDate(element) {
+            const row = element.closest('tr');
+            const shipDateInput = row.querySelector('.ship-date');
+            const termInput = row.querySelector('.pay-term');
+            const dueDateInput = row.querySelector('.due-date');
+
+            if (shipDateInput.value && termInput.value) {
+                const shipDate = new Date(shipDateInput.value);
+                const termDays = parseInt(termInput.value, 10);
+                
+                if (!isNaN(shipDate.getTime()) && !isNaN(termDays)) {
+                    shipDate.setDate(shipDate.getDate() + termDays);
+                    const yyyy = shipDate.getFullYear();
+                    let mm = shipDate.getMonth() + 1;
+                    let dd = shipDate.getDate();
+                    if (mm < 10) mm = '0' + mm;
+                    if (dd < 10) dd = '0' + dd;
+                    dueDateInput.value = `${yyyy}-${mm}-${dd}`;
+                }
+            }
+        }
+
+        // 实时计算
+        function calcTotal() {
+            let tInv = 0, tLoss = 0, tClaim = 0, tRec = 0;
+            
+            document.querySelectorAll('.inv-amt').forEach(i => tInv += parseFloat(i.value) || 0);
+            document.querySelectorAll('.loss-amt').forEach(i => tLoss += parseFloat(i.value) || 0);
+            document.querySelectorAll('.claim-amt').forEach(i => tClaim += parseFloat(i.value) || 0);
+            document.querySelectorAll('.rec-amt').forEach(i => tRec += parseFloat(i.value) || 0);
+
+            document.getElementById('totalInvAmt').innerText = tInv.toFixed(2);
+            document.getElementById('totalLossAmt').innerText = tLoss.toFixed(2);
+            document.getElementById('totalClaimAmt').innerText = tClaim.toFixed(2);
+            document.getElementById('totalReceiptAmt').innerText = tRec.toFixed(2);
+        }
+
+        // 核心导出逻辑
+        function exportToExcel() {
+            const insured = document.getElementById('gen_insured').value || '';
+            const caseNo = document.getElementById('gen_caseNo').value || '';
+            const currency = document.getElementById('gen_currency').value || '';
+            
+            let subjectHtml = '□被保险人 □代理公司：&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; □境外关联公司：';
+            const radios = document.getElementsByName('gen_subject');
+            for(let r of radios) {
+                if(r.checked) subjectHtml = subjectHtml.replace('□' + r.value, '☑' + r.value);
+            }
+
+            // 严格按照图片结构构建 Excel HTML
+            let excelHTML = `
+                <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+                <head>
+                    <meta charset="utf-8">
+                    <style>
+                        table { border-collapse: collapse; font-family: "SimSun", "Songti", sans-serif; font-size: 11pt; }
+                        td, th { border: 0.5pt solid #000000; padding: 2px 4px; text-align: center; vertical-align: middle; mso-number-format:"\\@"; }
+                        .title { font-size: 16pt; font-weight: bold; border: none; text-align: center; }
+                        .no-border { border: none; text-align: left; }
+                        .text-left { text-align: left; }
+                        .text-right { text-align: right; }
+                        .bg-gray { background-color: #f2f2f2; }
+                    </style>
+                </head>
+                <body>
+                <table>
+                    <!-- 标题 -->
+                    <tr><td colspan="18" class="title" style="height: 30px;">出运明细一览表(被保险人使用)</td></tr>
+                    
+                    <!-- 基础信息 -->
+                    <tr>
+                        <td colspan="2" class="no-border">被保险人名称：</td>
+                        <td colspan="4" class="text-left" style="border-bottom: 0.5pt solid #000;">${insured}</td>
+                        <td colspan="3" class="no-border" style="text-align:right;">签约主体：</td>
+                        <td colspan="9" class="no-border text-left">${subjectHtml}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" class="no-border">立案号：</td>
+                        <td colspan="4" class="text-left" style="border-bottom: 0.5pt solid #000;">${caseNo}</td>
+                        <td colspan="5" class="no-border"></td>
+                        <td colspan="2" class="no-border text-right">金额单位：</td>
+                        <td colspan="5" class="text-left" style="border-bottom: 0.5pt solid #000;">${currency}</td>
+                    </tr>
+                    
+                    <!-- 明细表头1 -->
+                    <tr class="bg-gray">
+                        <td colspan="5">发票</td>
+                        <td colspan="2">合同</td>
+                        <td colspan="2">提单（其他货运单据）</td>
+                        <td colspan="2">报关单号</td>
+                        <td rowspan="2">实际出运（交付）日期</td>
+                        <td rowspan="2">实际支付条件</td>
+                        <td rowspan="2">应付款日</td>
+                        <td rowspan="2">报损金额</td>
+                        <td rowspan="2">索赔金额</td>
+                        <td rowspan="2">备注</td>
+                        <td rowspan="3" class="no-border"></td>
+                    </tr>
+                    <!-- 明细表头2 -->
+                    <tr class="bg-gray">
+                        <td>申报发票号</td><td>申报发票金额</td>
+                        <td>发票号</td><td>发票金额</td><td>是否提供</td>
+                        <td>合同号</td><td>是否提供</td>
+                        <td>提单号</td><td>是否提供</td>
+                        <td>报关单号</td><td>是否提供</td>
+                    </tr>
+            `;
+
+            const detailRows = document.querySelectorAll('#tableBody tr');
+            let hasData = false;
+
+            detailRows.forEach(row => {
+                const invNo = row.querySelector('.inv-no').value.trim();
+                if (!invNo && !parseFloat(row.querySelector('.inv-amt').value)) return;
+
+                hasData = true;
+                const invAmt = parseFloat(row.querySelector('.inv-amt').value) || '';
+                const hasInv = row.querySelector('.has-inv').checked ? '√' : '';
+                const contractNo = row.querySelector('.contract-no').value.trim();
+                const hasContract = row.querySelector('.has-contract').checked ? '√' : '';
+                const blNo = row.querySelector('.bl-no').value.trim();
+                const hasBl = row.querySelector('.has-bl').checked ? '√' : '';
+                const customsNo = row.querySelector('.customs-no').value.trim();
+                const hasCustoms = row.querySelector('.has-customs').checked ? '√' : '';
+                const shipDate = row.querySelector('.ship-date').value;
+                const payMethod = row.querySelector('.pay-method').value;
+                const payTerm = row.querySelector('.pay-term').value.trim();
+                const payCondition = payTerm ? `${payMethod}${payTerm}` : payMethod;
+                const dueDate = row.querySelector('.due-date').value;
+                const lossAmt = parseFloat(row.querySelector('.loss-amt').value) || '';
+                const claimAmt = parseFloat(row.querySelector('.claim-amt').value) || '';
+                const remark = row.querySelector('.remark').value.trim();
+
+                excelHTML += `
+                    <tr>
+                        <td></td><td></td> <!-- 申报发票号、申报发票金额留空 -->
+                        <td>${invNo}</td><td>${invAmt}</td><td>${hasInv}</td>
+                        <td>${contractNo}</td><td>${hasContract}</td>
+                        <td>${blNo}</td><td>${hasBl}</td>
+                        <td>${customsNo}</td><td>${hasCustoms}</td>
+                        <td>${shipDate}</td>
+                        <td>${payCondition}</td>
+                        <td>${dueDate}</td>
+                        <td>${lossAmt}</td>
+                        <td>${claimAmt}</td>
+                        <td class="text-left">${remark}</td>
+                        <td class="no-border"></td>
+                    </tr>
+                `;
+            });
+
+            if (!hasData) {
+                alert("请至少填写一行明细数据（发票号或发票金额不能为空）！");
+                return;
+            }
+
+            const totalInv = document.getElementById('totalInvAmt').innerText;
+            const totalLoss = document.getElementById('totalLossAmt').innerText;
+            const totalClaim = document.getElementById('totalClaimAmt').innerText;
+            
+            excelHTML += `
+                    <tr class="bg-gray">
+                        <td class="text-right" colspan="3">总计：</td>
+                        <td>${totalInv}</td>
+                        <td colspan="7"></td>
+                        <td colspan="2"></td>
+                        <td>${totalLoss}</td>
+                        <td>${totalClaim}</td>
+                        <td></td>
+                        <td class="no-border"></td>
+                    </tr>
+                    
+                    <!-- 空行 -->
+                    <tr><td colspan="18" style="border: none; height: 15px;"></td></tr>
+                    
+                    <!-- 收汇记录 -->
+                    <tr><td colspan="3" class="no-border">收汇记录</td><td colspan="2" class="no-border text-right">金额单位：</td><td colspan="13" class="no-border text-left">${currency}</td></tr>
+                    <tr class="bg-gray">
+                        <td colspan="2">收汇日期</td>
+                        <td colspan="2">收汇金额</td>
+                        <td colspan="2">有无提供银行水单</td>
+                        <td colspan="5">备注</td>
+                        <td colspan="7"></td>
+                    </tr>
+            `;
+
+            const receiptRows = document.querySelectorAll('#receiptBody tr');
+            let hasReceipt = false;
+            let missingSlipAlert = false;
+
+            receiptRows.forEach(row => {
+                const date = row.querySelector('.rec-date').value;
+                const amt = parseFloat(row.querySelector('.rec-amt').value) || '';
+                const slipEl = row.querySelector('.rec-slip');
+                const slip = slipEl.value;
+                const remark = row.querySelector('.rec-remark').value.trim();
+                
+                if(!date && !amt) return;
+                hasReceipt = true;
+
+                if(!slip) {
+                    missingSlipAlert = true;
+                    slipEl.style.border = "2px solid red";
+                } else {
+                    slipEl.style.border = "1px solid #ccc";
+                }
+
+                const formattedRemark = remark.replace(/\n/g, '<br>').replace(/ /g, '&nbsp;');
+
+                excelHTML += `
+                    <tr>
+                        <td colspan="2">${date}</td>
+                        <td colspan="2">${amt}</td>
+                        <td colspan="2">${slip}</td>
+                        <td colspan="5" class="text-left">${formattedRemark}</td>
+                        <td colspan="7"></td>
+                    </tr>
+                `;
+            });
+
+            if (missingSlipAlert) {
+                alert("⚠️ 发现收汇记录中『有无提供银行水单』未选择！\n请务必提醒业务人员核实并选择。");
+                return; // 阻断导出
+            }
+
+            if (!hasReceipt) {
+                 excelHTML += `<tr><td colspan="2"></td><td colspan="2"></td><td colspan="2"></td><td colspan="5"></td><td colspan="7"></td></tr>`;
+            }
+
+            const totalReceipt = document.getElementById('totalReceiptAmt').innerText;
+            excelHTML += `
+                    <tr class="bg-gray">
+                        <td class="text-right" colspan="2">总计：</td>
+                        <td>${totalReceipt}</td>
+                        <td colspan="15"></td>
+                    </tr>
+
+                    <!-- 备注区 -->
+                    <tr><td colspan="18" style="border: none; height: 15px;"></td></tr>
+                    <tr><td colspan="18" class="no-border text-left">备注：</td></tr>
+                    <tr><td colspan="18" class="no-border text-left">1、“申报发票号、申报发票金额”为申报时的信息，其余蓝色字体部分为实际交易信息；保险合同不要求明细申报的，不需要填写该两项。</td></tr>
+                    <tr><td colspan="18" class="no-border text-left">2、收汇记录从报损项下对应的发票开始制作。</td></tr>
+                    <tr><td colspan="18" class="no-border text-left">3、如相应单据已提交的，请在对应栏打“√”；如未能提供，请在“备注”栏中补充说明原因。</td></tr>
+                    
+                    <tr><td colspan="18" style="border: none; height: 30px;"></td></tr>
+                    <tr><td colspan="12" class="no-border"></td><td colspan="2" class="no-border text-right">被保险人名称：</td><td colspan="4" class="no-border text-left">${insured}</td></tr>
+                </table>
+                </body>
+                </html>
+            `;
+
+            const blob = new Blob(['\ufeff' + excelHTML], { type: 'application/vnd.ms-excel;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `出运明细一览表_${caseNo || new Date().getTime()}.xls`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+    
+    <datalist id="term-list">
+        <option value="30"></option>
+        <option value="60"></option>
+        <option value="90"></option>
+        <option value="120"></option>
+    </datalist>
+</body>
+</html>
